@@ -10,6 +10,7 @@ namespace DeployMachine
     {
         static void Main(string[] args)
         {
+            Console.WriteLine("First run");
         }
     }
 }
