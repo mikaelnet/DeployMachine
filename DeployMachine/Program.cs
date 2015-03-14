@@ -34,6 +34,7 @@ namespace DeployMachine
     {
         static void Main(string[] args)
         {
+            // Load config
             var options = new Options();
             if (!CommandLine.Parser.Default.ParseArguments(args, options))
             {
