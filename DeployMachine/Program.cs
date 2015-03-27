@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using System.Net.Mime;
 using System.Text;
@@ -9,10 +10,10 @@ using CommandLine.Text;
 
 namespace DeployMachine
 {
-    class Options
+    public class Options
     {
-        [Option('h', "hostname", HelpText = "Hostname for TeamCity")]
-        public string TeamCityHost { get; set; }
+        [Option('h', "hostname", HelpText = "Base uri for TeamCity")]
+        public string TeamCityBaseUri { get; set; }
 
         [Option('u', "username", HelpText = "Username for TeamCity authentication")]
         public string Username { get; set; }
@@ -27,6 +28,18 @@ namespace DeployMachine
         public string GetUsage()
         {
             return "error message";
+        }
+
+        public void LoadDefaults()
+        {
+            if (string.IsNullOrWhiteSpace(TeamCityBaseUri))
+                TeamCityBaseUri = ConfigurationManager.AppSettings["BaseUrl"];
+            if (string.IsNullOrWhiteSpace(Username))
+                Username = ConfigurationManager.AppSettings["Username"];
+            if (string.IsNullOrWhiteSpace(Password))
+                Password = ConfigurationManager.AppSettings["Password"];
+            if (string.IsNullOrWhiteSpace(JobIdentity))
+                JobIdentity = ConfigurationManager.AppSettings["JobId"];
         }
     }
 
@@ -43,10 +56,11 @@ namespace DeployMachine
                 Environment.Exit(1);
                 return;
             }
+            options.LoadDefaults();
 
             try
             {
-                var deployManager = new DeployManager();
+                var deployManager = new DeployManager(options);
                 Console.WriteLine("Initalizing");
                 deployManager.Initialize();
                 Console.WriteLine("Running");

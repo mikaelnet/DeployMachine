@@ -1,5 +1,8 @@
 ﻿using System;
+using System.IO;
+using System.Threading;
 using Raspberry.IO.GeneralPurpose;
+using TeamCity;
 
 namespace DeployMachine
 {
@@ -11,36 +14,90 @@ namespace DeployMachine
         private ProcessorPin _btnRed;
         private ProcessorPin _btnGreen;
 
-        public void Run()
+        private readonly Options _options;
+        private readonly TeamCityClient _client;
+        private readonly TextWriter _log;
+
+        public DeployManager(Options options, TextWriter log = null)
         {
+            _options = options;
+            _client = new TeamCityClient(new Uri(options.TeamCityBaseUri), options.Username, options.Password);
+            _log = log ?? Console.Out;
+        }
+
+        private void WaitStart()
+        {
+            _log.WriteLine("Waiting for start...");
             bool redPressed = false, greenPressed = false;
+            int count = 0;
             while (redPressed == false || greenPressed == false)
             {
-                redPressed = !_driver.Read(_btnRed);
-                greenPressed = !_driver.Read(_btnGreen);
-
-                if (redPressed)
+                System.Threading.Thread.Sleep(TimeSpan.FromMilliseconds(100));
+                count++;
+                if ((count%10) < 5)
                 {
-                    Console.WriteLine("Red");
                     _driver.Write(_ledRed, true);
-                }
-                else
-                {
-                    _driver.Write(_ledRed, false);
-                }
-
-                if (greenPressed)
-                {
-                    Console.WriteLine("Green");
                     _driver.Write(_ledGreen, true);
                 }
                 else
                 {
+                    _driver.Write(_ledRed, false);
                     _driver.Write(_ledGreen, false);
                 }
 
+                redPressed = !_driver.Read(_btnRed);
+                greenPressed = !_driver.Read(_btnGreen);
+            }
 
-                System.Threading.Thread.Sleep(TimeSpan.FromMilliseconds(100));
+            _driver.Write(_ledRed, false);
+            _driver.Write(_ledGreen, true);
+        }
+
+        private void Error(string message)
+        {
+            _log.WriteLine("Error: {0}", message);
+            _driver.Write(_ledRed, true);
+            _driver.Write(_ledGreen, false);
+            throw new Exception(message);
+        }
+
+        public void Run()
+        {
+            WaitStart();
+            _log.WriteLine("Starting job {0} at {1}", _options.JobIdentity, _options.TeamCityBaseUri);
+            _client.StartJob(_options.JobIdentity);
+            if (_client.TaskId <= 0)
+                Error("Failed to start job");
+
+            _log.WriteLine("Task with id {0} {1}.", _client.TaskId, _client.State);
+
+            int count = 0;
+            do
+            {
+                Thread.Sleep(TimeSpan.FromMilliseconds(100));
+                count ++;
+
+                if ((count%30) == 0)
+                {
+                    _client.PollStatus();
+                    _log.WriteLine("{0}, {1} of {2} seconds, {3}%", _client.State, _client.ElapsedSeconds,
+                        _client.EstimatedTotalSeconds, _client.PercentageComplete);
+                }
+                _driver.Write(_ledGreen, (count % 10) < 5);
+                
+            } while (_client.State == TeamCityClient.JobState.Queued || _client.State == TeamCityClient.JobState.Running);
+
+            if (_client.Result == TeamCityClient.JobResult.Success)
+            {
+                _driver.Write(_ledRed, false);
+                _driver.Write(_ledGreen, true);
+                _log.WriteLine("Success!");
+            }
+            else
+            {
+                _driver.Write(_ledRed, true);
+                _driver.Write(_ledGreen, false);
+                _log.WriteLine("Fail!");
             }
         }
 
